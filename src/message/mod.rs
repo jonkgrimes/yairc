@@ -1,7 +1,10 @@
 
 mod parser;
 
-struct Tag(String);
+struct Tag {
+    key: String,
+    value: String
+}
 type Tags = Vec<Tag>;
 
 #[derive(Debug, PartialEq)]
