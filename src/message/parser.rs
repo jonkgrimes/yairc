@@ -10,6 +10,8 @@ use nom::character::complete::{alphanumeric0, space1, crlf};
 use nom::sequence::separated_pair;
 use nom::multi::separated_list0;
 
+use crate::message::{Message, Tag, Tags, Command, Param, Source};
+
 // Basic message structure
 // [@tags] [:source] <command> <parameters>
 
@@ -27,12 +29,8 @@ fn tag_key(i: &str) -> IResult<&str, &str> {
     take_while(f)(i)
 }
 
-fn tag_end(i: &str) -> IResult<&str, &str> {
-    alt((tag(";"), tag(" ")))(i)
-}
-
 fn tag_pair(i: &str) -> IResult<&str, (&str, &str)> {
-   separated_pair(alphanumeric0, tag("="), alphanumeric0)(i)
+   separated_pair(tag_key, tag("="), alphanumeric0)(i)
 }
 
 fn tags(i: &str) -> IResult<&str, Option<Vec<(&str, &str)>>> {
@@ -76,29 +74,21 @@ fn params(i: &str) -> IResult<&str, &str> {
     take_until("\r\n")(i)
 }
 
-fn message(i: &str) -> IResult<&str, Vec<&str>> {
-    println!("Executing...");
-    // let mut result: Vec<&str> = Vec::new();
-    // if tags present parse
+pub fn message(i: &str) -> IResult<&str, (Option<Vec<(&str, &str)>>, Option<&str>, &str, &str)> {
     let (i, tags) = tags(i)?;
-    println!("{}", i);
-    if let Some(tags) = tags {
-        dbg!(tags);
-    }
+    dbg!(i);
+    dbg!(&tags);
     let (i, source) = source(i)?;
-    if source != "" {
-        dbg!(source);
-    }
+    dbg!(i);
+    dbg!(source);
     let (i, command) = command(i)?;
+    dbg!(i);
     dbg!(command);
-    // let (i) = peek(tag_start)?;
-    // if source present, parse
-    // parse command
-    // parse params
     let(i, params) = params(i)?;
+    dbg!(i);
     dbg!(params);
 
-    Ok(("", vec!["", source, command, params]))
+    Ok((i, (tags, Some(source), command, params)))
 }
 
 #[cfg(test)]
@@ -165,30 +155,17 @@ mod tests {
 
     #[test]
     fn test_tags() {
-        let raw = "id=123;type=sometype ";
+        let raw = "@id=123;type=sometype ";
         let (i, actual) = tags(raw).unwrap();
-        let expected = vec![("id", "123"),("type","sometype")];
-        // assert_eq!(actual, expected);
+        let expected = Some(vec![("id", "123"),("type","sometype")]);
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_tags_with_true_terminator() {
-        let raw = "id=123;type= ";
+        let raw = "@id=123;type= ";
         let (i, actual) = tags(raw).unwrap();
         let expected = vec![("id", "123"),("type","")];
-        // assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_top_level_parser() {
-        let raw = "@id=123;type=something :Guest1!textual@254D99FE.73C022D0.AC18634F.IP PRIVMSG #test_123 :Hello\r\n";
-        let (i, actual) = message(raw).unwrap();
-        let expected = vec![
-            "@id=123;type=something ",                        // tags
-            ":Guest1!textual@254D99FE.73C022D0.AC18634F.IP ", // source
-            "PRIVMSG ",                                       // command
-            "#test_123 :Hello"                                // paramerters
-        ];
-        assert_eq!(actual, expected);
+        assert_eq!(actual.unwrap(), expected);
     }
 }
