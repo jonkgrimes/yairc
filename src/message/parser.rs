@@ -3,8 +3,10 @@
 use std::str;
 
 use nom::bytes::complete::{tag, take_till, take_while};
-use nom::character::complete::{alphanumeric0, line_ending};
+use nom::character::complete::{alphanumeric0, char, crlf};
+use nom::combinator::peek;
 use nom::multi::{separated_list0};
+use nom::branch::alt;
 use nom::sequence::{preceded, separated_pair};
 use nom::{
     bytes::complete::take_until, character::is_alphanumeric, combinator::opt, multi::many_till,
@@ -86,18 +88,30 @@ fn command(i: &str) -> IResult<&str, &str> {
 
 // Parameter parsers
 fn params(i: &str) -> IResult<&str, Vec<&str>> {
-    let (i, (mut params, rest)) = many_till(param, tag(":"))(i)?;
-    let (i, p) = take_until(LINE_ENDING)(i)?;
-    params.push(p);
+    dbg!(i);
+    let (i, (mut params, rest)) = many_till(param, crlf)(i)?;
+    dbg!(i);
     Ok((i, params))
 }
 
 fn param(i: &str) -> IResult<&str, &str> {
-    terminated(take_until(" "), tag(" "))(i)
+    let (i, tag) = opt(tag(":"))(i)?;
+    if let Some(_) = tag {
+        trailing_param(i)
+    } else {
+        normal_param(i)
+    }
+}
+
+fn normal_param(i: &str) -> IResult<&str, &str> {
+    alt((
+      terminated(take_until(" "), tag(" ")),
+      trailing_param
+    ))(i)
 }
 
 fn trailing_param(i: &str) -> IResult<&str, &str> {
-    preceded(tag(":"), terminated(take_until(LINE_ENDING), line_ending))(i)
+    take_until(LINE_ENDING)(i)
 }
 
 pub fn message(
@@ -198,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_trailing_param() {
-        let raw = ":*** Looking up your hostname...\r\n";
+        let raw = "*** Looking up your hostname...\r\n";
         let (i, actual) = trailing_param(raw).unwrap();
         let expected = "*** Looking up your hostname...";
         assert_eq!(actual, expected);
@@ -221,6 +235,58 @@ mod tests {
             Some("irc.jonkgrimes.com"),
             "NOTICE",
             vec!["*", "*** Looking up your hostname..."],
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_blank_params() {
+        let raw = ":irc.example.com CAP * LIST :\r\n";
+        let (_i, actual) = message(raw).unwrap();
+        let expected = (
+            None,
+            Some("irc.example.com"),
+            "CAP",
+            vec!["*", "LIST", ""],
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_long_trailing_param() {
+        let raw = "CAP REQ :sasl message-tags foo\r\n";
+        let (_i, actual) = message(raw).unwrap();
+        let expected = (
+            None,
+            None,
+            "CAP",
+            vec!["REQ", "sasl message-tags foo"]
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_privmsg_command() {
+        let raw = ":dan!d@localhost PRIVMSG #chan :Hey!\r\n";
+        let (_i, actual) = message(raw).unwrap();
+        let expected = (
+            None,
+            Some("dan"),
+            "PRIVMSG",
+            vec!["#chan", "Hey!"]
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_no_trailing_param() {
+        let raw = ":dan!d@localhost PRIVMSG #chan Hey!\r\n";
+        let (_i, actual) = message(raw).unwrap();
+        let expected = (
+            None,
+            Some("dan"),
+            "PRIVMSG",
+            vec!["#chan", "Hey!"]
         );
         assert_eq!(actual, expected);
     }
