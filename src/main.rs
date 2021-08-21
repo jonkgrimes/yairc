@@ -1,125 +1,98 @@
-use std::net::TcpStream;
-use std::thread;
-use std::thread::{JoinHandle};
-use std::{error::Error, io};
-use crate::util::{
-    Event,
-    Events,
-    TabsState,
-};
 use io::Read;
-use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
-use tui::{
-    backend::TermionBackend,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::{Span, Spans},
-    widgets::{Block, Borders, Tabs},
-    Terminal,
-};
+use std::net::TcpStream;
+use std::process;
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::thread::JoinHandle;
+use std::{error::Error, io};
+use std::time::Duration;
 
-mod util;
 mod message;
+mod client;
 
-struct App<'a> {
-    tabs: TabsState<'a>,
-}
+use message::Message;
+use client::Client;
 
-const SERVER: &'static str = "192.168.33.10:6697";
+const DEFAUL_PORT: &'static str = "6697";
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Terminal initialization
-    let stdout = io::stdout().into_raw_mode()?;
-    let stdout = MouseTerminal::from(stdout);
-    let stdout = AlternateScreen::from(stdout);
-    let backend = TermionBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    // TODO: Validate format of server
+    let server_arg = std::env::args().nth(1).expect("Need to provide a host as the first argument. Example: irc.example.com");
+    dbg!(&server_arg);
+    // TODO: Validate format of room
+    dbg!(std::env::args());
+    let room_arg = std::env::args().nth(2).expect("Need to provide a room to join. Example: #test_room");
+    dbg!(&room_arg);
 
-    let events = Events::new();
+    let (tx, rx) = channel();
 
-    let tcp_thread: JoinHandle<std::result::Result<(), Box<std::io::Error>>> = thread::spawn(|| {
-        // Start the TCP connection
-        let mut stream = TcpStream::connect(SERVER)?;
+    let sender = Arc::new(Mutex::new(tx));
 
-        let mut buf = [0u8; 1024];
+    let reader_thread: JoinHandle<std::result::Result<(), Box<std::io::Error>>> =
+        thread::spawn(move || {
+            // Start the TCP connection
+            let server = format!("{}:{}", server_arg, DEFAUL_PORT);
+            let mut stream = TcpStream::connect(server)?;
 
+            let mut buf = [0u8; 1024];
 
-        loop {
-            match stream.read(&mut buf) {
-                Ok(length) => {
-                    let data = &buf[0..length];
-                    println!("data: {}", String::from_utf8_lossy(data));
-                },
-                Err(e) => {
-                    return Err(Box::new(e))
+            loop {
+                println!("Waiting for data");
+                match stream.read(&mut buf) {
+                    Ok(length) => {
+                        let data = String::from_utf8_lossy(&buf[0..length]);
+                        let message = Message::parse(&data);
+                        match message {
+                            Ok(message) => {
+                                sender
+                                    .lock()
+                                    .unwrap()
+                                    .send(message)
+                                    .expect("Unable to send data");
+                            },
+                            Err(e) => {
+                                eprintln!("Unable to parse message: {}", data);
+                                eprintln!("Error: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => return Err(Box::new(e)),
                 }
+                thread::sleep(Duration::from_secs(1))
+            }
+        });
+
+    // UI loop
+    let ui_thread = thread::spawn(move || loop {
+        println!("Waiting for messages");
+        match rx.recv() {
+            Ok(message) => {
+                println!("{:?}", message);
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
             }
         }
+        thread::sleep(Duration::from_secs(1))
     });
 
-    tcp_thread.join().ok().expect("Can't join the TCP thread");
-
-    // App
-    let mut app = App {
-        tabs: TabsState::new(vec!["Tab0", "Tab1", "Tab2", "Tab3"]),
-    };
-
-    // Main UI loop
-    loop {
-        terminal.draw(|f| {
-            let size = f.size();
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .margin(5)
-                .horizontal_margin(3)
-                .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
-                .split(size);
-
-            let block = Block::default().style(Style::default().bg(Color::Rgb(21,21,21)).fg(Color::White));
-            f.render_widget(block, size);
-            let titles = app
-                .tabs
-                .titles
-                .iter()
-                .map(|t| {
-                    let (first, rest) = t.split_at(1);
-                    Spans::from(vec![
-                        Span::styled(first, Style::default().fg(Color::White)),
-                        Span::styled(rest, Style::default().fg(Color::Green)),
-                    ])
-                })
-                .collect();
-            let tabs = Tabs::new(titles)
-                .block(Block::default().borders(Borders::ALL).title("Tabs"))
-                .select(app.tabs.index)
-                .style(Style::default().fg(Color::Cyan))
-                .highlight_style(
-                    Style::default()
-                        .add_modifier(Modifier::BOLD)
-                        .bg(Color::Black),
-                );
-            f.render_widget(tabs, chunks[0]);
-            let inner = match app.tabs.index {
-                0 => Block::default().title("Inner 0").borders(Borders::ALL),
-                1 => Block::default().title("Inner 1").borders(Borders::ALL),
-                2 => Block::default().title("Inner 2").borders(Borders::ALL),
-                3 => Block::default().title("Inner 3").borders(Borders::ALL),
-                _ => unreachable!(),
-            };
-            f.render_widget(inner, chunks[1]);
-        })?;
-
-        if let Event::Input(input) = events.next()? {
-            match input {
-                Key::Char('q') => {
-                    break;
-                }
-                Key::Alt(number) => app.tabs.at(number.to_digit(10).unwrap() as usize),
-                Key::Right => app.tabs.next(),
-                Key::Left => app.tabs.previous(),
-                _ => {}
+    match reader_thread.join() {
+        Ok(result) => match result {
+            Ok(_) => {
+                println!("Reader thread exited without incident")
             }
+            Err(e) => {
+                eprintln!("Reader thread exited due to error: {}", e)
+            }
+        },
+        Err(e) => {
+            eprintln!("IRC listener thread unable to start")
         }
     }
+
+    ui_thread.join().expect("UI Thread unable to be started");
+
     Ok(())
 }
