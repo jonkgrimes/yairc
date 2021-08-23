@@ -10,16 +10,17 @@ type Tags = Vec<Tag>;
 struct Source(String);
 
 #[derive(Debug, PartialEq)]
-enum Command {
+pub enum Command {
     Numeric(u32),
     Notice,
     PrivMsg,
+    Ping,
+    Pong,
     Unknown
 }
 
 impl From<&str> for Command {
     fn from(s: &str) -> Self {
-        dbg!(s);
         match s {
             "NOTICE" => Command::Notice,
             "PRIVMSG" => Command::PrivMsg,
@@ -41,6 +42,14 @@ pub struct Message {
 }
 
 impl Message {
+    pub fn new(command: Command, params: Params) -> Self {
+        Message { tags: None, source: None, command, params }
+    }
+
+    pub fn ping() -> Self {
+        Message { tags: None, source: None, command: Command::Ping, params: vec![] }
+    }
+
     /// Get a reference to the message's tags.
     pub fn tags(&self) -> Option<&Tags> {
         self.tags.as_ref()
@@ -49,6 +58,10 @@ impl Message {
     /// Get a reference to the message's source.
     pub fn source(&self) -> Option<&Source> {
         self.source.as_ref()
+    }
+
+    pub fn command(&self) -> &Command {
+        &self.command
     }
 
     pub fn parse(raw: &str) -> Result<Self, Box<dyn std::error::Error + '_>> {
@@ -78,6 +91,11 @@ impl Message {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_as_bytes() {
+        let msg = Message::new(Command::Cap, vec!["LS", "302"]);
+    }
 
     #[test]
     fn test_parse() {

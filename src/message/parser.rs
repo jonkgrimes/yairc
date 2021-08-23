@@ -88,9 +88,7 @@ fn command(i: &str) -> IResult<&str, &str> {
 
 // Parameter parsers
 fn params(i: &str) -> IResult<&str, Vec<&str>> {
-    dbg!(i);
     let (i, (mut params, rest)) = many_till(param, crlf)(i)?;
-    dbg!(i);
     Ok((i, params))
 }
 
