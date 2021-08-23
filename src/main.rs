@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // TODO: Validate format of server
     let server_arg = std::env::args().nth(1).expect("Need to provide a host as the first argument. Example: irc.example.com");
     // TODO: Validate format of room
-    let room_arg = std::env::args().nth(2).expect("Need to provide a room to join. Example: #test_room");
+    let channel_name = std::env::args().nth(2).expect("Need to provide a room to join. Example: #test_room");
 
     let (tx, rx) = channel();
 
@@ -34,6 +34,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut buf = [0u8; 1024];
 
             let mut messages: Vec<Message> = Vec::new();
+            let mut need_to_register = true;
+            let mut can_join = false;
 
             loop {
                 println!("Waiting for data");
@@ -45,7 +47,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                             Ok(message) => {
                                 match message.command() {
                                     Command::Ping => {
-                                        messages.push(Message::ping());
+                                        let server = message.get_param(0).unwrap();
+                                        messages.push(Message::pong(server.clone()));
+                                        sender
+                                            .lock()
+                                            .unwrap()
+                                            .send(message)
+                                            .expect("Unable to send data");
+                                    },
+                                    Command::RplWelcome => {
+                                        messages.append(&mut client::join(&channel_name));
+                                        sender
+                                            .lock()
+                                            .unwrap()
+                                            .send(message)
+                                            .expect("Unable to send data");
                                     },
                                     _ => {
                                         sender
@@ -65,11 +81,30 @@ fn main() -> Result<(), Box<dyn Error>> {
                     Err(e) => return Err(Box::new(e)),
                 }
 
+                if need_to_register {
+                    messages.append(&mut client::register());
+                    need_to_register = false;
+                }
+
+                if can_join {
+                    messages.append(&mut client::join(&channel_name));
+                }
+
                 messages.iter().for_each(|message| {
-                    match stream.write(message) {
-                        Ok()
+                    match stream.write(&message.as_bytes()) {
+                        Ok(0) => {
+                            println!("Sent nothing, server connection might be closed")
+                        },
+                        Ok(n) => {
+                            println!("Sent {} bytes", n)
+                        },
+                        Err (e) => {
+                            eprintln!("Unable to send message: {}", e);
+                        }
                     }
                 });
+                messages.clear();
+
                 thread::sleep(Duration::from_secs(1))
             }
         });
