@@ -111,6 +111,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // UI loop
     let ui_thread = thread::spawn(move || loop {
+        let mut input_buffer = String::new();
+
+        match io::stdin().read_to_string(&mut input_buffer) {
+            Ok(length) => {
+                println!("Read {} bytes from input", length);
+            },
+            Err(e) => {
+                eprintln!("An error occurred reading input: {}", e)
+            }
+        }
+
+        // Data from server TCP stream
         match rx.recv() {
             Ok(message) => {
                 println!("{:?}", message)
