@@ -2,14 +2,13 @@
 
 use std::str;
 
-use nom::bytes::complete::{tag, take_till, take_while};
-use nom::character::complete::{alphanumeric0, char, crlf};
-use nom::combinator::peek;
+use nom::bytes::complete::{escaped, tag, take_till, take_while};
+use nom::character::complete::{alphanumeric0, crlf, one_of};
 use nom::multi::{separated_list0};
 use nom::branch::alt;
-use nom::sequence::{preceded, separated_pair};
+use nom::sequence::{separated_pair};
 use nom::{
-    bytes::complete::take_until, character::is_alphanumeric, combinator::opt, multi::many_till,
+    bytes::complete::take_until, character::is_alphanumeric, character::is_space, combinator::opt, multi::many_till,
     sequence::terminated, IResult,
 };
 
@@ -32,8 +31,26 @@ fn tag_key(i: &str) -> IResult<&str, &str> {
     take_while(f)(i)
 }
 
+fn tag_value(i: &str) -> IResult<&str, &str> {
+    dbg!(i);
+    let f = |c: char| !is_space(c as u8) && c != ';';
+    let (i, unescaped_value) = take_while(f)(i)?;
+    dbg!(i);
+    dbg!(unescaped_value);
+    let (_, value) = escaped(alphanumeric0, '\\', one_of(r#""n\s"#))(unescaped_value)?;
+    dbg!(value);
+    Ok((i, value))
+}
+
 fn tag_pair(i: &str) -> IResult<&str, (&str, &str)> {
-    separated_pair(tag_key, tag("="), alphanumeric0)(i)
+    dbg!(i);
+    if let Ok((rest, tag)) = separated_pair(tag_key, tag("="), tag_value)(i) {
+        Ok((rest, tag))
+    } else {
+        // Empty case k1=1;k2;k3=3
+        let (rest, tag) = take_until(";")(i)?;
+        Ok((rest, (tag, "")))
+    }
 }
 
 fn tags(i: &str) -> IResult<&str, Option<Vec<(&str, &str)>>> {
@@ -81,8 +98,10 @@ fn client(i: &str) -> IResult<&str, &str> {
 
 // Command parsers
 fn command(i: &str) -> IResult<&str, &str> {
-    let (i, command) = take_until(" ")(i)?;
-    let (i, _) = tag(" ")(i)?;
+    let (i, command) = alt(
+        (take_until(" "), take_until("\r\n"))
+    )(i)?;
+    let (i, _) = alt((tag(" "), tag("\r\n")))(i)?;
     Ok((i, command))
 }
 
@@ -114,11 +133,11 @@ fn trailing_param(i: &str) -> IResult<&str, &str> {
 
 pub fn message(
     i: &str,
-) -> IResult<&str, (Option<Vec<(&str, &str)>>, Option<&str>, &str, Vec<&str>)> {
+) -> IResult<&str, (Option<Vec<(&str, &str)>>, Option<&str>, &str, Option<Vec<&str>>)> {
     let (i, tags) = tags(i)?;
     let (i, source) = source(i)?;
     let (i, command) = command(i)?;
-    let (i, params) = params(i)?;
+    let (i, params) = opt(params)(i)?;
 
     Ok((i, (tags, source, command, params)))
 }
@@ -134,12 +153,21 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+
     #[test]
     fn test_tag_key_error() {
         let raw = "some-key#";
         let (_, actual) = tag_key(raw).unwrap();
         let expected = "some-key";
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_tag_empty_value() {
+        let raw = "@a=b;c=32;k;rt=ql7 ";
+        let (_, actual) = tags(raw).unwrap();
+        let expected = vec![("a", "b"), ("c", "32"), ("k", ""), ("rt", "ql7")];
+        assert_eq!(actual, Some(expected));
     }
 
     #[test]
@@ -232,7 +260,7 @@ mod tests {
             None,
             Some("irc.jonkgrimes.com"),
             "NOTICE",
-            vec!["*", "*** Looking up your hostname..."],
+            Some(vec!["*", "*** Looking up your hostname..."]),
         );
         assert_eq!(actual, expected);
     }
@@ -245,7 +273,7 @@ mod tests {
             None,
             Some("irc.example.com"),
             "CAP",
-            vec!["*", "LIST", ""],
+            Some(vec!["*", "LIST", ""]),
         );
         assert_eq!(actual, expected);
     }
@@ -258,7 +286,7 @@ mod tests {
             None,
             None,
             "CAP",
-            vec!["REQ", "sasl message-tags foo"]
+            Some(vec!["REQ", "sasl message-tags foo"])
         );
         assert_eq!(actual, expected);
     }
@@ -271,7 +299,7 @@ mod tests {
             None,
             Some("dan"),
             "PRIVMSG",
-            vec!["#chan", "Hey!"]
+            Some(vec!["#chan", "Hey!"])
         );
         assert_eq!(actual, expected);
     }
@@ -284,7 +312,7 @@ mod tests {
             None,
             Some("dan"),
             "PRIVMSG",
-            vec!["#chan", "Hey!"]
+            Some(vec!["#chan", "Hey!"])
         );
         assert_eq!(actual, expected);
     }

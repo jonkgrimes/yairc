@@ -1,5 +1,5 @@
 [package]
-name = "irc-client"
+name = "irc_client"
 version = "0.1.0"
 authors = ["Jon Grimes <jon.grimes@aptible.com>"]
 edition = "2018"
@@ -10,3 +10,7 @@ edition = "2018"
 tui = "0.14"
 termion = "*"
 nom = "6.1.2"
+
+[dev-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.8"

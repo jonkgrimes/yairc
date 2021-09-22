@@ -25,7 +25,7 @@ pub enum Command {
     Pong,
     Error,
     RplWelcome,
-    Unknown,
+    Unknown(String),
 }
 
 impl From<&str> for Command {
@@ -39,15 +39,12 @@ impl From<&str> for Command {
             "PING" => Command::Ping,
             "PRIVMSG" => Command::PrivMsg,
             "ERROR" => Command::Error,
-            _ => {
-                match s {
-                    "001" => Command::RplWelcome,
-                    _ => {
-                        eprintln!("Unknown command: {}", s);
-                        Command::Unknown
-                    }
+            _ => match s {
+                "001" => Command::RplWelcome,
+                _ => {
+                    Command::Unknown(s.to_string())
                 }
-            }
+            },
         }
     }
 }
@@ -56,8 +53,9 @@ impl Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let command = match self {
             Command::Numeric(n) => {
-               format!("{}", n)
-            },
+                format!("{}", n)
+            }
+            Command::Unknown(s) => s.clone(),
             Command::Cap => "CAP".to_string(),
             Command::Notice => "NOTICE".to_string(),
             Command::Nick => "NICK".to_string(),
@@ -65,10 +63,9 @@ impl Display for Command {
             Command::PrivMsg => "PRIVMSG".to_string(),
             Command::Ping => "PING".to_string(),
             Command::Pong => "PONG".to_string(),
-            Command::Unknown => "UNKNOWN".to_string(),
             Command::Join => "JOIN".to_string(),
             Command::RplWelcome => "RPL_WELCOME".to_string(),
-            Command::Error => "ERROR".to_string()
+            Command::Error => "ERROR".to_string(),
         };
         write!(f, "{}", command)
     }
@@ -81,7 +78,6 @@ impl Param {
     pub fn new(param: &str) -> Self {
         Param(param.to_string())
     }
-
 }
 
 impl From<&str> for Param {
@@ -90,10 +86,23 @@ impl From<&str> for Param {
     }
 }
 
+impl From<String> for Param {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl PartialEq<String>  for Param {
+    fn eq(&self, other: &String) -> bool {
+        &self.0 == other
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Params {
     params: Vec<Param>,
 }
+
 
 impl Params {
     fn new() -> Self {
@@ -106,6 +115,10 @@ impl Params {
 
     pub fn get(&self, index: usize) -> Option<&Param> {
         self.params.get(index)
+    }
+
+    pub fn to_vec(&self) -> Vec<String> {
+        self.params.iter().map(|p| p.0.clone()).collect()
     }
 }
 
@@ -132,21 +145,21 @@ impl From<Vec<&str>> for Params {
 impl From<[Param; 1]> for Params {
     fn from(a: [Param; 1]) -> Self {
         Self {
-            params: a.iter().map(|p| p.clone()).collect()
+            params: a.iter().map(|p| p.clone()).collect(),
         }
     }
 }
 
 impl FromIterator<Param> for Params {
-  fn from_iter<I: IntoIterator<Item = Param>>(iter: I) -> Self {
-      let mut c = Params::new();
+    fn from_iter<I: IntoIterator<Item = Param>>(iter: I) -> Self {
+        let mut c = Params::new();
 
-      for i in iter {
-          c.add(i)
-      }
+        for i in iter {
+            c.add(i)
+        }
 
-      c
-  }
+        c
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -154,7 +167,16 @@ pub struct Message {
     tags: Option<Tags>,
     source: Option<Source>,
     command: Command,
-    params: Params,
+    params: Option<Params>
+}
+
+impl PartialEq<Vec<String>> for Message {
+    fn eq(&self, other: &Vec<String>) -> bool {
+        match &self.params {
+          Some(p) => &p.params == other,
+          None => false
+        }
+    }
 }
 
 impl Message {
@@ -163,7 +185,7 @@ impl Message {
             tags: None,
             source: None,
             command,
-            params: Params::from(params),
+            params: Some(Params::from(params)),
         }
     }
 
@@ -172,7 +194,7 @@ impl Message {
             tags: None,
             source: None,
             command: Command::Ping,
-            params: Params::new()
+            params: None
         }
     }
 
@@ -181,7 +203,7 @@ impl Message {
             tags: None,
             source: None,
             command: Command::Pong,
-            params: Params::from([server])
+            params: Some(Params::from([server]))
         }
     }
 
@@ -216,7 +238,7 @@ impl Message {
             Some(source) => Some(Source(source.to_string())),
         };
         let command = Command::from(command);
-        let params = params.iter().map(|p| Param::from(*p)).collect();
+        let params = params.map(|p| p.iter().map(|p| Param::from(*p)).collect());
         Ok(Self {
             tags,
             source,
@@ -226,12 +248,21 @@ impl Message {
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
-        let s= format!("{} {}\r\n", self.command, self.params);
+        let s = if let Some(params) = &self.params {
+            format!("{} {}\r\n", self.command, params)
+        } else {
+            format!("{}\r\n", self.command)
+        };
         s.into_bytes()
     }
 
     pub fn get_param(&self, index: usize) -> Option<&Param> {
-        self.params.get(index)
+        match &self.params {
+            Some(p) => {
+                p.get(index)
+            }
+            _ => None
+        }
     }
 }
 
@@ -255,7 +286,7 @@ mod tests {
             ]),
             source: Some(Source("Guest1".to_string())), // source
             command: Command::PrivMsg,
-            params: Params::from(vec!["#test_123", "Hello"]) // paramerters
+            params: Some(Params::from(vec!["#test_123", "Hello"])), // paramerters
         };
         assert_eq!(actual, expected);
     }
@@ -268,11 +299,55 @@ mod tests {
             tags: None,
             source: Some(Source("irc.jonkgrimes.com".to_string())), // source
             command: Command::Notice,
-            params: Params::from(vec![
-                "*",
-                "*** Looking up your hostname..."
-            ]), // paramerters
+            params: Some(Params::from(vec!["*", "*** Looking up your hostname..."])), // paramerters
         };
         assert_eq!(actual, expected);
+    }
+
+    use serde::{Deserialize, Serialize};
+    use std::{fs::File, io::Read};
+    use std::collections::HashMap;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct SplitTests {
+        tests: Vec<TestCase>,
+    }
+    #[derive(Debug, Serialize, Deserialize)]
+    struct TestCase {
+        input: String,
+        atoms: Atoms,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Atoms {
+        verb: String,
+        tags: Option<HashMap<String, String>>,
+        source: Option<String>,
+        params: Option<Vec<String>>,
+    }
+
+    #[test]
+    fn parser_integration_tests() {
+        let mut yaml =
+            File::open("src/message/test_data/msg-split.yaml").expect("Unable to open msg-split.yaml");
+        let mut buffer = Vec::new();
+        yaml.read_to_end(&mut buffer)
+            .expect("Unable to read from file");
+        let tests: SplitTests =
+            serde_yaml::from_slice(&buffer).expect("Was not in the correct format");
+        tests.tests.iter().for_each(|test| {
+            let raw = format!("{}\r\n", test.input);
+            dbg!(&raw);
+            let message = Message::parse(&raw).expect("Unable to parse message");
+
+            if let Some(params) = &test.atoms.params {
+                let msg_params = message.params.map(|p| p.to_vec());
+                assert_eq!(msg_params.as_ref(), Some(params));
+            }
+
+/*             if let verb = test.atoms.verb {
+                assert_eq!(verb, message.command())
+            } */
+        });
     }
 }
