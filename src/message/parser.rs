@@ -75,7 +75,7 @@ fn source(i: &str) -> IResult<&str, Option<&str>> {
         return Ok((i, None));
     }
 
-    let (i, source) = take_till(|c| c == ' ' || c == '!')(i)?;
+    let (i, source) = take_till(|c| c == ' ')(i)?;
     if source.len() > 0 {
         // Ignore the client information for now
         let (i, _) = take_until(" ")(i)?;
@@ -183,7 +183,7 @@ mod tests {
     fn test_source_with_client() {
         let raw = ":Guest1!textual@254D99FE.73C022D0.AC18634F.IP ";
         let (_i, source) = source(raw).unwrap();
-        let expected = Some("Guest1");
+        let expected = Some("Guest1!textual@254D99FE.73C022D0.AC18634F.IP");
         let actual = source;
         assert_eq!(actual, expected);
     }
@@ -317,7 +317,7 @@ mod tests {
         let (_i, actual) = message(raw).unwrap();
         let expected = (
             None,
-            Some("dan"),
+            Some("dan!d@localhost"),
             "PRIVMSG",
             Some(vec!["#chan", "Hey!"])
         );
@@ -330,7 +330,7 @@ mod tests {
         let (_i, actual) = message(raw).unwrap();
         let expected = (
             None,
-            Some("dan"),
+            Some("dan!d@localhost"),
             "PRIVMSG",
             Some(vec!["#chan", "Hey!"])
         );

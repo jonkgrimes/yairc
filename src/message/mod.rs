@@ -302,7 +302,7 @@ mod tests {
                 Tag("id".to_string(), "123".to_string()),
                 Tag("type".to_string(), "something".to_string()),
             ]),
-            source: Some(Source("Guest1".to_string())), // source
+            source: Some(Source("Guest1!textual@254D99FE.73C022D0.AC18634F.IP".to_string())), // source
             command: Command::PrivMsg,
             params: Some(Params::from(vec!["#test_123", "Hello"])), // paramerters
         };
