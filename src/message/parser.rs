@@ -3,8 +3,8 @@
 use std::str;
 
 use nom::bytes::complete::{escaped, tag, take_till, take_while};
-use nom::character::complete::{alphanumeric0, crlf, one_of};
-use nom::multi::{separated_list0};
+use nom::character::complete::{alphanumeric0, crlf, multispace0, space0, one_of};
+use nom::multi::{self, separated_list0};
 use nom::branch::alt;
 use nom::sequence::{separated_pair};
 use nom::{
@@ -27,28 +27,24 @@ fn tag_separator(i: &str) -> IResult<&str, &str> {
 }
 
 fn tag_key(i: &str) -> IResult<&str, &str> {
-    let f = |c: char| is_alphanumeric(c as u8) || c == '-';
+    let f = |c: char| is_alphanumeric(c as u8) || c == '-' || c == '/' || c == ' ';
     take_while(f)(i)
 }
 
 fn tag_value(i: &str) -> IResult<&str, &str> {
-    dbg!(i);
     let f = |c: char| !is_space(c as u8) && c != ';';
     let (i, unescaped_value) = take_while(f)(i)?;
-    dbg!(i);
-    dbg!(unescaped_value);
-    let (_, value) = escaped(alphanumeric0, '\\', one_of(r#""n\s"#))(unescaped_value)?;
-    dbg!(value);
-    Ok((i, value))
+    // let (_, value) = escaped(alphanumeric0, '\\', one_of(r#""n\s"#))(unescaped_value)?;
+    Ok((i, unescaped_value))
+    // alphanumeric0(i)
 }
 
 fn tag_pair(i: &str) -> IResult<&str, (&str, &str)> {
-    dbg!(i);
     if let Ok((rest, tag)) = separated_pair(tag_key, tag("="), tag_value)(i) {
         Ok((rest, tag))
     } else {
         // Empty case k1=1;k2;k3=3
-        let (rest, tag) = take_until(";")(i)?;
+        let (rest, tag) = alt((take_until(";"), take_until(" ")))(i)?;
         Ok((rest, (tag, "")))
     }
 }
@@ -92,7 +88,7 @@ fn source(i: &str) -> IResult<&str, Option<&str>> {
 }
 
 fn client(i: &str) -> IResult<&str, &str> {
-    let (i, o) = tag("!")(i)?;
+    let (i, _) = tag("!")(i)?;
     terminated(take_until(" "), tag(" "))(i)
 }
 
@@ -107,11 +103,14 @@ fn command(i: &str) -> IResult<&str, &str> {
 
 // Parameter parsers
 fn params(i: &str) -> IResult<&str, Vec<&str>> {
-    let (i, (mut params, rest)) = many_till(param, crlf)(i)?;
+    dbg!(i);
+    let (i, _) = multispace0(i)?;
+    let (i, (params, _)) = many_till(param, crlf)(i)?;
     Ok((i, params))
 }
 
 fn param(i: &str) -> IResult<&str, &str> {
+    dbg!(i);
     let (i, tag) = opt(tag(":"))(i)?;
     if let Some(_) = tag {
         trailing_param(i)
@@ -121,10 +120,11 @@ fn param(i: &str) -> IResult<&str, &str> {
 }
 
 fn normal_param(i: &str) -> IResult<&str, &str> {
-    alt((
-      terminated(take_until(" "), tag(" ")),
+    let (i, param) = alt((
+      terminated(take_until(" "), space0),
       trailing_param
-    ))(i)
+    ))(i)?;
+    Ok((i, param))
 }
 
 fn trailing_param(i: &str) -> IResult<&str, &str> {
@@ -253,6 +253,14 @@ mod tests {
     }
 
     #[test]
+    fn test_preceding_whitespace_params() {
+        let raw = " * :*** Looking up your hostname...\r\n";
+        let (i, actual) = params(raw).unwrap();
+        let expected = vec!["*", "*** Looking up your hostname..."];
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn test_message_parsing() {
         let raw = ":irc.jonkgrimes.com NOTICE * :*** Looking up your hostname...\r\n";
         let (_i, actual) = message(raw).unwrap();
@@ -268,6 +276,18 @@ mod tests {
     #[test]
     fn test_blank_params() {
         let raw = ":irc.example.com CAP * LIST :\r\n";
+        let (_i, actual) = message(raw).unwrap();
+        let expected = (
+            None,
+            Some("irc.example.com"),
+            "CAP",
+            Some(vec!["*", "LIST", ""]),
+        );
+        assert_eq!(actual, expected);
+    }
+
+    fn test_space_preceding_params() {
+        let raw = ":irc.example.com CAP  * LIST :\r\n";
         let (_i, actual) = message(raw).unwrap();
         let expected = (
             None,

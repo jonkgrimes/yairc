@@ -12,6 +12,12 @@ type Tags = Vec<Tag>;
 #[derive(Debug, PartialEq)]
 struct Source(String);
 
+impl PartialEq<Source> for String { 
+    fn eq(&self, rhs: &Source) -> bool {
+        self == &rhs.0
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Command {
     Numeric(u32),
@@ -46,6 +52,18 @@ impl From<&str> for Command {
                 }
             },
         }
+    }
+}
+
+impl PartialEq<String> for Command {
+    fn eq(&self, rhs: &String) -> bool {
+        &self.to_string() == rhs
+    }
+}
+
+impl PartialEq<&Command> for String { 
+    fn eq(&self, rhs: &&Command) -> bool {
+        self == &rhs.to_string()
     }
 }
 
@@ -337,17 +355,18 @@ mod tests {
             serde_yaml::from_slice(&buffer).expect("Was not in the correct format");
         tests.tests.iter().for_each(|test| {
             let raw = format!("{}\r\n", test.input);
-            dbg!(&raw);
             let message = Message::parse(&raw).expect("Unable to parse message");
 
             if let Some(params) = &test.atoms.params {
-                let msg_params = message.params.map(|p| p.to_vec());
+                let msg_params = message.params.as_ref().map(|p| p.to_vec());
                 assert_eq!(msg_params.as_ref(), Some(params));
             }
 
-/*             if let verb = test.atoms.verb {
-                assert_eq!(verb, message.command())
-            } */
+            assert_eq!(test.atoms.verb, message.command());
+
+            if let Some(source) = &test.atoms.source {
+                assert_eq!(source, message.source().unwrap());
+            }
         });
     }
 }
