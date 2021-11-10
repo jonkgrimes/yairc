@@ -2,14 +2,14 @@ use io::Read;
 use std::io::{stdin, stdout, Write};
 use std::net::TcpStream;
 use std::process;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::{error::Error, io};
 
-use termion::{color ,style};
+use termion::{color, event, style};
 
 mod client;
 mod message;
@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (tx, rx) = channel();
 
     let sender = Arc::new(Mutex::new(tx));
-
+    
     let server = format!("{}:{}", server_arg, DEFAUL_PORT);
 
     let reader_thread: JoinHandle<std::result::Result<(), Box<std::io::Error>>> =
@@ -115,9 +115,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         });
 
+        let events = events();
 
-    // UI loop
-    let ui_thread = thread::spawn(move || {
         // Initiailize output
         loop {
             // Data from server TCP stream
@@ -127,6 +126,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         Command::Notice => {
                             println!("{}{}{}", color::Fg(color::Yellow), message, color::Fg(color::Reset));
                         }
+                        Command::RplWelcome => {
+                            println!("{}{}{}{}{}", style::Bold, color::Fg(color::LightBlue), message, color::Fg(color::Reset), style::Reset);
+                        }
                         Command::PrivMsg => {
                             dbg!(&message);
                             let name = match message.source() {
@@ -135,7 +137,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             };
                             let message = message.get_param(1).unwrap();
 
-                            println!("{}{}{}{}: {}{}", style::Bold, color::Fg(color::Green), name, color::Fg(color::Reset), style::Reset, message);    
+                            println!("{}{}<{}>{}:{} {}", style::Bold, color::Fg(color::Green), name, color::Fg(color::Reset), style::Reset, message);    
                         }
                         _ => {
                             println!("{}", message);
@@ -147,8 +149,22 @@ fn main() -> Result<(), Box<dyn Error>> {
                     process::exit(1);
                 }
             }
+
+            match events.recv() {
+                Ok(event) => {
+                        match event {
+                            Event::Quit => {
+                                process::exit(0);
+                            }
+                            _ => {}
+                        }
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    process::exit(1);
+                }
+            }
         }
-    });
 
     match reader_thread.join() {
         Ok(result) => match result {
@@ -164,6 +180,42 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    ui_thread.join().expect("UI Thread unable to be started");
+    // UI loop
+
     Ok(())
+}
+
+enum Event {
+    Key,
+    Quit,
+}
+
+fn events() -> Receiver<Event> {
+    let (tx, rx) = channel();
+
+    thread::spawn(move || {
+        loop {
+            let mut stdin = stdin();
+            let mut buffer = String::new();
+
+            match stdin.read_line(&mut buffer) {
+                Ok(_) => {
+                    let event = match buffer.trim() {
+                        "q" => Event::Quit,
+                        _ => Event::Key,
+                    };
+
+                    if let Err(e) = tx.send(event) {
+                        eprintln!("Unable to send event: {}", e);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Unable to read from stdin: {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+    });
+
+    rx
 }
