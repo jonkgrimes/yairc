@@ -2,9 +2,9 @@
 
 use std::str;
 
-use nom::bytes::complete::{escaped, tag, take_till, take_while};
-use nom::character::complete::{alphanumeric0, crlf, multispace0, space0, one_of};
-use nom::multi::{self, separated_list0};
+use nom::bytes::complete::{tag, take_till, take_while};
+use nom::character::complete::{crlf, multispace0, space0};
+use nom::multi::{separated_list0};
 use nom::branch::alt;
 use nom::sequence::{separated_pair};
 use nom::{
@@ -103,14 +103,12 @@ fn command(i: &str) -> IResult<&str, &str> {
 
 // Parameter parsers
 fn params(i: &str) -> IResult<&str, Vec<&str>> {
-    dbg!(i);
     let (i, _) = multispace0(i)?;
     let (i, (params, _)) = many_till(param, crlf)(i)?;
     Ok((i, params))
 }
 
 fn param(i: &str) -> IResult<&str, &str> {
-    dbg!(i);
     let (i, tag) = opt(tag(":"))(i)?;
     if let Some(_) = tag {
         trailing_param(i)
@@ -191,7 +189,7 @@ mod tests {
     #[test]
     fn test_tag() {
         let raw = "id=123AB";
-        let (i, actual) = tag_pair(raw).unwrap();
+        let (_, actual) = tag_pair(raw).unwrap();
         let expected = ("id", "123AB");
         assert_eq!(actual, expected);
     }
@@ -199,7 +197,7 @@ mod tests {
     #[test]
     fn test_tag_with_number_value() {
         let raw = "id=123";
-        let (i, actual) = tag_pair(raw).unwrap();
+        let (_, actual) = tag_pair(raw).unwrap();
         let expected = ("id", "123");
         assert_eq!(actual, expected);
     }
@@ -207,7 +205,7 @@ mod tests {
     #[test]
     fn test_no_value_tag() {
         let raw = "type=";
-        let (i, actual) = tag_pair(raw).unwrap();
+        let (_, actual) = tag_pair(raw).unwrap();
         let expected = ("type", "");
         assert_eq!(actual, expected);
     }
@@ -215,7 +213,7 @@ mod tests {
     #[test]
     fn test_tags() {
         let raw = "@id=123;type=sometype ";
-        let (i, actual) = tags(raw).unwrap();
+        let (_, actual) = tags(raw).unwrap();
         let expected = Some(vec![("id", "123"), ("type", "sometype")]);
         assert_eq!(actual, expected);
     }
@@ -223,7 +221,7 @@ mod tests {
     #[test]
     fn test_tags_with_true_terminator() {
         let raw = "@id=123;type= ";
-        let (i, actual) = tags(raw).unwrap();
+        let (_,  actual) = tags(raw).unwrap();
         let expected = vec![("id", "123"), ("type", "")];
         assert_eq!(actual.unwrap(), expected);
     }
@@ -231,7 +229,7 @@ mod tests {
     #[test]
     fn test_command_parsing() {
         let raw = "NOTICE * :*** Looking up your hostname...";
-        let (i, actual) = command(raw).unwrap();
+        let (_, actual) = command(raw).unwrap();
         let expected = "NOTICE";
         assert_eq!(actual, expected);
     }
@@ -239,7 +237,7 @@ mod tests {
     #[test]
     fn test_trailing_param() {
         let raw = "*** Looking up your hostname...\r\n";
-        let (i, actual) = trailing_param(raw).unwrap();
+        let (_, actual) = trailing_param(raw).unwrap();
         let expected = "*** Looking up your hostname...";
         assert_eq!(actual, expected);
     }
@@ -247,7 +245,7 @@ mod tests {
     #[test]
     fn test_params_parsing() {
         let raw = "* :*** Looking up your hostname...\r\n";
-        let (i, actual) = params(raw).unwrap();
+        let (_, actual) = params(raw).unwrap();
         let expected = vec!["*", "*** Looking up your hostname..."];
         assert_eq!(actual, expected);
     }
@@ -255,7 +253,7 @@ mod tests {
     #[test]
     fn test_preceding_whitespace_params() {
         let raw = " * :*** Looking up your hostname...\r\n";
-        let (i, actual) = params(raw).unwrap();
+        let (_, actual) = params(raw).unwrap();
         let expected = vec!["*", "*** Looking up your hostname..."];
         assert_eq!(actual, expected);
     }
@@ -286,6 +284,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    #[test]
     fn test_space_preceding_params() {
         let raw = ":irc.example.com CAP  * LIST :\r\n";
         let (_i, actual) = message(raw).unwrap();

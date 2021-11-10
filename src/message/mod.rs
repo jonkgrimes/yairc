@@ -10,7 +10,19 @@ struct Tag(String, String);
 type Tags = Vec<Tag>;
 
 #[derive(Debug, PartialEq)]
-struct Source(String);
+pub struct Source(String);
+
+impl From<String> for Source {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl Display for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl PartialEq<Source> for String { 
     fn eq(&self, rhs: &Source) -> bool {
@@ -95,6 +107,12 @@ pub struct Param(String);
 impl Param {
     pub fn new(param: &str) -> Self {
         Param(param.to_string())
+    }
+}
+
+impl Display for Param {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -281,6 +299,17 @@ impl Message {
             }
             _ => None
         }
+    }
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut s = String::new();
+        s.push_str(&format!("{}", self.command));
+        if let Some(params) = &self.params {
+            s.push_str(&format!(" {}", params));
+        }
+        write!(f, "{}", s)
     }
 }
 
