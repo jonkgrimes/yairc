@@ -68,19 +68,19 @@ fn source_start(i: &str) -> IResult<&str, Option<&str>> {
     opt(tag(":"))(i)
 }
 
-fn source(i: &str) -> IResult<&str, Option<&str>> {
+fn source(i: &str) -> IResult<&str, Option<(&str, Option<&str>, Option<&str>)>> {
     // No source
     let (i, o) = source_start(i)?;
     if o == None {
         return Ok((i, None));
     }
 
-    let (i, source) = take_till(|c| c == ' ')(i)?;
-    if source.len() > 0 {
+    let (i, nick) = take_till(|c| c == ' ' || c == '!')(i)?;
+    if nick.len() > 0 {
         // Ignore the client information for now
-        let (i, _) = take_until(" ")(i)?;
+        let (i, _) = take_until()(i)?;
         let (i, _) = tag(" ")(i)?;
-        Ok((i, Some(source)))
+        Ok((i, Some((nick, None, None))))
     } else {
         let (i, _) = tag(" ")(i)?;
         Ok((i, None))
@@ -131,7 +131,7 @@ fn trailing_param(i: &str) -> IResult<&str, &str> {
 
 pub fn message(
     i: &str,
-) -> IResult<&str, (Option<Vec<(&str, &str)>>, Option<&str>, &str, Option<Vec<&str>>)> {
+) -> IResult<&str, (Option<Vec<(&str, &str)>>, Option<(&str, Option<&str>, Option<&str>)>, &str, Option<Vec<&str>>)> {
     let (i, tags) = tags(i)?;
     let (i, source) = source(i)?;
     let (i, command) = command(i)?;
@@ -172,7 +172,7 @@ mod tests {
     fn test_source() {
         let raw = ":irc.jonkgrimes.com ";
         let (_i, source) = source(raw).unwrap();
-        let expected = Some("irc.jonkgrimes.com");
+        let expected = Some(("irc.jonkgrimes.com", None, None));
         let actual = source;
         assert_eq!(actual, expected);
     }
@@ -181,7 +181,7 @@ mod tests {
     fn test_source_with_client() {
         let raw = ":Guest1!textual@254D99FE.73C022D0.AC18634F.IP ";
         let (_i, source) = source(raw).unwrap();
-        let expected = Some("Guest1!textual@254D99FE.73C022D0.AC18634F.IP");
+        let expected = Some(("Guest1", Some("textual"), Some("254D99FE.73C022D0.AC18634F.IP")));
         let actual = source;
         assert_eq!(actual, expected);
     }
@@ -264,7 +264,7 @@ mod tests {
         let (_i, actual) = message(raw).unwrap();
         let expected = (
             None,
-            Some("irc.jonkgrimes.com"),
+            Some(("irc.jonkgrimes.com", None, None)),
             "NOTICE",
             Some(vec!["*", "*** Looking up your hostname..."]),
         );
@@ -277,7 +277,7 @@ mod tests {
         let (_i, actual) = message(raw).unwrap();
         let expected = (
             None,
-            Some("irc.example.com"),
+            Some(("irc.example.com", None, None)),
             "CAP",
             Some(vec!["*", "LIST", ""]),
         );
@@ -290,7 +290,7 @@ mod tests {
         let (_i, actual) = message(raw).unwrap();
         let expected = (
             None,
-            Some("irc.example.com"),
+            Some(("irc.example.com", None, None)),
             "CAP",
             Some(vec!["*", "LIST", ""]),
         );
@@ -316,7 +316,7 @@ mod tests {
         let (_i, actual) = message(raw).unwrap();
         let expected = (
             None,
-            Some("dan!d@localhost"),
+            Some(("dan", Some("d"), Some("localhost"))),
             "PRIVMSG",
             Some(vec!["#chan", "Hey!"])
         );
@@ -329,7 +329,7 @@ mod tests {
         let (_i, actual) = message(raw).unwrap();
         let expected = (
             None,
-            Some("dan!d@localhost"),
+            Some(("dan", Some("d"), Some("localhost"))),
             "PRIVMSG",
             Some(vec!["#chan", "Hey!"])
         );

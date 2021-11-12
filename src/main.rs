@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (tx, rx) = channel();
 
     let sender = Arc::new(Mutex::new(tx));
-    
+
     let server = format!("{}:{}", server_arg, DEFAUL_PORT);
 
     let reader_thread: JoinHandle<std::result::Result<(), Box<std::io::Error>>> =
@@ -115,56 +115,57 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         });
 
-        let events = events();
+    // Initiailize output
+    loop {
+        // Data from server TCP stream
+        match rx.recv() {
+            Ok(message) => match message.command() {
+                Command::Notice => {
+                    println!(
+                        "{}{}{}",
+                        color::Fg(color::Yellow),
+                        message,
+                        color::Fg(color::Reset)
+                    );
+                }
+                Command::RplWelcome => {
+                    println!(
+                        "{}{}{}{}{}",
+                        style::Bold,
+                        color::Fg(color::LightBlue),
+                        message,
+                        color::Fg(color::Reset),
+                        style::Reset
+                    );
+                }
+                Command::PrivMsg => {
+                    dbg!(&message);
+                    let name = match message.source() {
+                        Some(name) => name.to_string(),
+                        None => "Unknown".to_string(),
+                    };
+                    let message = message.get_param(1).unwrap();
 
-        // Initiailize output
-        loop {
-            // Data from server TCP stream
-            match rx.recv() {
-                Ok(message) => {
-                    match message.command() {
-                        Command::Notice => {
-                            println!("{}{}{}", color::Fg(color::Yellow), message, color::Fg(color::Reset));
-                        }
-                        Command::RplWelcome => {
-                            println!("{}{}{}{}{}", style::Bold, color::Fg(color::LightBlue), message, color::Fg(color::Reset), style::Reset);
-                        }
-                        Command::PrivMsg => {
-                            dbg!(&message);
-                            let name = match message.source() {
-                                Some(name) => name.to_string(),
-                                None => "Unknown".to_string(),
-                            };
-                            let message = message.get_param(1).unwrap();
-
-                            println!("{}{}<{}>{}:{} {}", style::Bold, color::Fg(color::Green), name, color::Fg(color::Reset), style::Reset, message);    
-                        }
-                        _ => {
-                            println!("{}", message);
-                        }
-                    }
+                    println!(
+                        "{}{}<{}>{}:{} {}",
+                        style::Bold,
+                        color::Fg(color::Green),
+                        name,
+                        color::Fg(color::Reset),
+                        style::Reset,
+                        message
+                    );
                 }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    process::exit(1);
+                _ => {
+                    println!("{}", message);
                 }
-            }
-
-            match events.recv() {
-                Ok(event) => {
-                        match event {
-                            Event::Quit => {
-                                process::exit(0);
-                            }
-                            _ => {}
-                        }
-                }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    process::exit(1);
-                }
+            },
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
             }
         }
+    }
 
     match reader_thread.join() {
         Ok(result) => match result {
@@ -183,39 +184,4 @@ fn main() -> Result<(), Box<dyn Error>> {
     // UI loop
 
     Ok(())
-}
-
-enum Event {
-    Key,
-    Quit,
-}
-
-fn events() -> Receiver<Event> {
-    let (tx, rx) = channel();
-
-    thread::spawn(move || {
-        loop {
-            let mut stdin = stdin();
-            let mut buffer = String::new();
-
-            match stdin.read_line(&mut buffer) {
-                Ok(_) => {
-                    let event = match buffer.trim() {
-                        "q" => Event::Quit,
-                        _ => Event::Key,
-                    };
-
-                    if let Err(e) = tx.send(event) {
-                        eprintln!("Unable to send event: {}", e);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Unable to read from stdin: {}", e);
-                    process::exit(1);
-                }
-            }
-        }
-    });
-
-    rx
 }

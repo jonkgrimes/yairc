@@ -1,34 +1,16 @@
-use crate::message::parser::message;
 use std::fmt;
 use std::fmt::Display;
 use std::iter::FromIterator;
 
 mod parser;
+mod source;
+
+use crate::message::parser::message;
+use crate::message::source::Source;
 
 #[derive(Debug, PartialEq)]
 struct Tag(String, String);
 type Tags = Vec<Tag>;
-
-#[derive(Debug, PartialEq)]
-pub struct Source(String);
-
-impl From<String> for Source {
-    fn from(s: String) -> Self {
-        Self(s)
-    }
-}
-
-impl Display for Source {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl PartialEq<Source> for String { 
-    fn eq(&self, rhs: &Source) -> bool {
-        self == &rhs.0
-    }
-}
 
 #[derive(Debug, PartialEq)]
 pub enum Command {
@@ -271,7 +253,7 @@ impl Message {
         };
         let source = match source {
             None => None,
-            Some(source) => Some(Source(source.to_string())),
+            Some(source) => Some(Source::from(source)),
         };
         let command = Command::from(command);
         let params = params.map(|p| p.iter().map(|p| Param::from(*p)).collect());
@@ -331,7 +313,7 @@ mod tests {
                 Tag("id".to_string(), "123".to_string()),
                 Tag("type".to_string(), "something".to_string()),
             ]),
-            source: Some(Source("Guest1!textual@254D99FE.73C022D0.AC18634F.IP".to_string())), // source
+            source: Some(Source::new_with_user_and_host("Guest1".to_string(), "textual".to_string(), "254D99FE.73C022D0.AC18634F.IP".to_string())), // source
             command: Command::PrivMsg,
             params: Some(Params::from(vec!["#test_123", "Hello"])), // paramerters
         };
@@ -344,7 +326,7 @@ mod tests {
         let actual = Message::parse(raw).unwrap();
         let expected = Message {
             tags: None,
-            source: Some(Source("irc.jonkgrimes.com".to_string())), // source
+            source: Some(Source::new("irc.jonkgrimes.com".to_string())), // source
             command: Command::Notice,
             params: Some(Params::from(vec!["*", "*** Looking up your hostname..."])), // paramerters
         };
