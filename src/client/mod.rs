@@ -1,5 +1,5 @@
 use std::net::TcpStream;
-use crate::message::{Message, Command, Param};
+use crate::message::{Message, Command};
 
 pub struct Client;
 

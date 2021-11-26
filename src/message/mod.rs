@@ -1,184 +1,20 @@
 use std::fmt;
 use std::fmt::Display;
-use std::iter::FromIterator;
 
 mod parser;
+mod command;
 mod source;
+mod param;
 
 use crate::message::parser::message;
+pub use crate::message::command::Command;
+use crate::message::param::{Param, Params};
 use crate::message::source::Source;
 
 #[derive(Debug, PartialEq)]
 struct Tag(String, String);
 type Tags = Vec<Tag>;
 
-#[derive(Debug, PartialEq)]
-pub enum Command {
-    Numeric(u32),
-    Cap,
-    Notice,
-    Nick,
-    User,
-    Join,
-    PrivMsg,
-    Ping,
-    Pong,
-    Error,
-    RplWelcome,
-    Unknown(String),
-}
-
-impl From<&str> for Command {
-    fn from(s: &str) -> Self {
-        match s {
-            "NOTICE" => Command::Notice,
-            "PRIVMSG" => Command::PrivMsg,
-            "NICK" => Command::Nick,
-            "CAP" => Command::Cap,
-            "USER" => Command::User,
-            "PING" => Command::Ping,
-            "PRIVMSG" => Command::PrivMsg,
-            "ERROR" => Command::Error,
-            _ => match s {
-                "001" => Command::RplWelcome,
-                _ => {
-                    Command::Unknown(s.to_string())
-                }
-            },
-        }
-    }
-}
-
-impl PartialEq<String> for Command {
-    fn eq(&self, rhs: &String) -> bool {
-        &self.to_string() == rhs
-    }
-}
-
-impl PartialEq<&Command> for String { 
-    fn eq(&self, rhs: &&Command) -> bool {
-        self == &rhs.to_string()
-    }
-}
-
-impl Display for Command {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let command = match self {
-            Command::Numeric(n) => {
-                format!("{}", n)
-            }
-            Command::Unknown(s) => s.clone(),
-            Command::Cap => "CAP".to_string(),
-            Command::Notice => "NOTICE".to_string(),
-            Command::Nick => "NICK".to_string(),
-            Command::User => "USER".to_string(),
-            Command::PrivMsg => "PRIVMSG".to_string(),
-            Command::Ping => "PING".to_string(),
-            Command::Pong => "PONG".to_string(),
-            Command::Join => "JOIN".to_string(),
-            Command::RplWelcome => "RPL_WELCOME".to_string(),
-            Command::Error => "ERROR".to_string(),
-        };
-        write!(f, "{}", command)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Param(String);
-
-impl Param {
-    pub fn new(param: &str) -> Self {
-        Param(param.to_string())
-    }
-}
-
-impl Display for Param {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<&str> for Param {
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
-    }
-}
-
-impl From<String> for Param {
-    fn from(s: String) -> Self {
-        Self(s)
-    }
-}
-
-impl PartialEq<String>  for Param {
-    fn eq(&self, other: &String) -> bool {
-        &self.0 == other
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Params {
-    params: Vec<Param>,
-}
-
-
-impl Params {
-    fn new() -> Self {
-        Self { params: Vec::new() }
-    }
-
-    fn add(&mut self, param: Param) {
-        self.params.push(param)
-    }
-
-    pub fn get(&self, index: usize) -> Option<&Param> {
-        self.params.get(index)
-    }
-
-    pub fn to_vec(&self) -> Vec<String> {
-        self.params.iter().map(|p| p.0.clone()).collect()
-    }
-}
-
-impl Display for Params {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s: String = self
-            .params
-            .iter()
-            .map(|p| format!("{}", p.0))
-            .collect::<Vec<String>>()
-            .join(" ");
-        write!(f, "{}", s)
-    }
-}
-
-impl From<Vec<&str>> for Params {
-    fn from(v: Vec<&str>) -> Self {
-        Self {
-            params: v.iter().map(|s| Param::new(s)).collect(),
-        }
-    }
-}
-
-impl From<[Param; 1]> for Params {
-    fn from(a: [Param; 1]) -> Self {
-        Self {
-            params: a.iter().map(|p| p.clone()).collect(),
-        }
-    }
-}
-
-impl FromIterator<Param> for Params {
-    fn from_iter<I: IntoIterator<Item = Param>>(iter: I) -> Self {
-        let mut c = Params::new();
-
-        for i in iter {
-            c.add(i)
-        }
-
-        c
-    }
-}
 
 #[derive(Debug, PartialEq)]
 pub struct Message {
@@ -186,15 +22,6 @@ pub struct Message {
     source: Option<Source>,
     command: Command,
     params: Option<Params>
-}
-
-impl PartialEq<Vec<String>> for Message {
-    fn eq(&self, other: &Vec<String>) -> bool {
-        match &self.params {
-          Some(p) => &p.params == other,
-          None => false
-        }
-    }
 }
 
 impl Message {
