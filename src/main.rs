@@ -9,6 +9,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use std::{error::Error, io};
 
+use termion::raw::IntoRawMode;
 use termion::{color, event, style};
 
 mod client;
@@ -26,13 +27,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     // TODO: Validate format of room
     let channel_name = std::env::args()
         .nth(2)
-        .expect("Need to provide a room to join. Example: #test_room");
+        .expect("Need to provide a room to join. Example: test_room");
+
+    let nick = std::env::args()
+        .nth(3)
+        .expect("Need to provide a nick for the server. Example: somename");
 
     let (tx, rx) = channel();
 
     let sender = Arc::new(Mutex::new(tx));
+    let receiver = Arc::new(Mutex::new(rx));
 
     let server = format!("{}:{}", server_arg, DEFAUL_PORT);
+
+    let stdout = stdout();
+    let mut stdout = Arc::new(stdout);
 
     let reader_thread: JoinHandle<std::result::Result<(), Box<std::io::Error>>> =
         thread::spawn(move || {
@@ -42,9 +51,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut messages: Vec<Message> = Vec::new();
             let mut need_to_register = true;
             let mut can_join = false;
+            let mut stdout = stdout.lock().into_raw_mode().unwrap();
 
             loop {
-                println!("Reading from server");
+                write!(stdout, "Reading from server").unwrap();
                 match stream.read(&mut buf) {
                     Ok(length) => {
                         let data = String::from_utf8_lossy(&buf[0..length]);
@@ -86,13 +96,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 if need_to_register {
-                    println!("Registering...");
-                    messages.append(&mut client::register());
+                    write!(stdout, "Registering...").unwrap();
+                    messages.append(&mut client::register(&nick));
                     need_to_register = false;
                 }
 
                 if can_join {
-                    println!("Joining...");
+                    write!(stdout, "Joining...").unwrap();
                     messages.append(&mut client::join(&channel_name));
                 }
 
@@ -100,25 +110,27 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .iter()
                     .for_each(|message| match stream.write(&message.as_bytes()) {
                         Ok(0) => {
-                            println!("Sent nothing, server connection might be closed")
+                            write!(stdout, "Sent nothing, server connection might be closed").unwrap()
                         }
                         Ok(n) => {
-                            println!("Sent {} bytes", n)
+                            write!(stdout, "Sent {} bytes", n).unwrap()
                         }
                         Err(e) => {
-                            eprintln!("Unable to send message: {}", e);
+                            write!(stdout, "Unable to send message: {}", e).unwrap()
                         }
                     });
                 messages.clear();
 
-                thread::sleep(Duration::from_secs(1))
+                thread::sleep(Duration::from_secs(1));
+                stdout.flush().unwrap();
             }
         });
 
     // Initiailize output
-    loop {
+    let ui_thread = thread::spawn(move || loop {
+        let receiver = receiver.lock().unwrap();
         // Data from server TCP stream
-        match rx.recv() {
+        match receiver.recv() {
             Ok(message) => match message.command() {
                 Command::Notice => {
                     println!(
@@ -165,7 +177,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 process::exit(1);
             }
         }
-    }
+    });
 
     match reader_thread.join() {
         Ok(result) => match result {
@@ -180,8 +192,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             eprintln!("IRC listener thread unable to start")
         }
     }
-
-    // UI loop
 
     Ok(())
 }
