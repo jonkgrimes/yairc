@@ -40,9 +40,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let server = format!("{}:{}", server_arg, DEFAUL_PORT);
 
-    let stdout = stdout();
-    let mut stdout = Arc::new(stdout);
-
     let reader_thread: JoinHandle<std::result::Result<(), Box<std::io::Error>>> =
         thread::spawn(move || {
             let mut stream = TcpStream::connect(server)?;
@@ -51,10 +48,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut messages: Vec<Message> = Vec::new();
             let mut need_to_register = true;
             let mut can_join = false;
-            let mut stdout = stdout.lock().into_raw_mode().unwrap();
 
             loop {
-                write!(stdout, "Reading from server").unwrap();
+                println!("Reading from server");
                 match stream.read(&mut buf) {
                     Ok(length) => {
                         let data = String::from_utf8_lossy(&buf[0..length]);
@@ -96,13 +92,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 if need_to_register {
-                    write!(stdout, "Registering...").unwrap();
+                    println!("Registering...");
                     messages.append(&mut client::register(&nick));
                     need_to_register = false;
                 }
 
                 if can_join {
-                    write!(stdout, "Joining...").unwrap();
+                    println!("Joining...");
                     messages.append(&mut client::join(&channel_name));
                 }
 
@@ -110,72 +106,95 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .iter()
                     .for_each(|message| match stream.write(&message.as_bytes()) {
                         Ok(0) => {
-                            write!(stdout, "Sent nothing, server connection might be closed").unwrap()
+                            println!("Sent nothing, server connection might be closed")
                         }
                         Ok(n) => {
-                            write!(stdout, "Sent {} bytes", n).unwrap()
+                            println!("Sent {} bytes", n)
                         }
                         Err(e) => {
-                            write!(stdout, "Unable to send message: {}", e).unwrap()
+                            eprintln!("Unable to send message: {}", e)
                         }
                     });
                 messages.clear();
 
                 thread::sleep(Duration::from_secs(1));
-                stdout.flush().unwrap();
             }
         });
 
     // Initiailize output
-    let ui_thread = thread::spawn(move || loop {
-        let receiver = receiver.lock().unwrap();
-        // Data from server TCP stream
-        match receiver.recv() {
-            Ok(message) => match message.command() {
-                Command::Notice => {
-                    println!(
-                        "{}{}{}",
-                        color::Fg(color::Yellow),
-                        message,
-                        color::Fg(color::Reset)
-                    );
-                }
-                Command::RplWelcome => {
-                    println!(
-                        "{}{}{}{}{}",
-                        style::Bold,
-                        color::Fg(color::LightBlue),
-                        message,
-                        color::Fg(color::Reset),
-                        style::Reset
-                    );
-                }
-                Command::PrivMsg => {
-                    dbg!(&message);
-                    let name = match message.source() {
-                        Some(name) => name.to_string(),
-                        None => "Unknown".to_string(),
-                    };
-                    let message = message.get_param(1).unwrap();
+    let ui_thread = thread::spawn(move || {
 
-                    println!(
-                        "{}{}<{}>{}:{} {}",
-                        style::Bold,
-                        color::Fg(color::Green),
-                        name,
-                        color::Fg(color::Reset),
-                        style::Reset,
-                        message
-                    );
+        loop {
+            let receiver = receiver.lock().unwrap();
+
+            // Data from server TCP stream
+            match receiver.recv() {
+                Ok(message) => match message.command() {
+                    Command::Notice => {
+                        println!(
+                            "{}{}{}",
+                            color::Fg(color::Yellow),
+                            message,
+                            color::Fg(color::Reset)
+                        );
+                    }
+                    Command::RplWelcome => {
+                        println!(
+                            "{}{}{}{}{}",
+                            style::Bold,
+                            color::Fg(color::LightBlue),
+                            message,
+                            color::Fg(color::Reset),
+                            style::Reset
+                        );
+                    }
+                    Command::PrivMsg => {
+                        dbg!(&message);
+                        let name = match message.source() {
+                            Some(name) => name.to_string(),
+                            None => "Unknown".to_string(),
+                        };
+                        let message = message.get_param(1).unwrap();
+
+                        println!(
+                            "{}{}<{}>{}:{} {}",
+                            style::Bold,
+                            color::Fg(color::Green),
+                            name,
+                            color::Fg(color::Reset),
+                            style::Reset,
+                            message
+                        );
+                    }
+                    _ => {
+                        println!("{}", message);
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    process::exit(1);
                 }
-                _ => {
-                    println!("{}", message);
-                }
-            },
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                process::exit(1);
             }
+
+        }
+    });
+
+    let input_thread = thread::spawn(|| {
+        let stdin = stdin();
+        let stdin = stdin.lock();
+
+        let mut bytes = stdin.bytes();
+        loop {
+            let b = bytes.next().unwrap().unwrap();
+            println!(
+                "{}{}<{}>{}:{} {}",
+                style::Bold,
+                color::Fg(color::White),
+                "User",
+                color::Fg(color::Reset),
+                style::Reset,
+                b
+            );
         }
     });
 
