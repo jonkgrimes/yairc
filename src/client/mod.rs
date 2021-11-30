@@ -14,7 +14,7 @@ pub fn register(nick: &str) -> Vec<Message> {
         Message::new(Command::Cap, vec!["LS", "302"]),
         Message::new(Command::Nick, vec![nick]),
         Message::new(Command::User, vec![&format!("{} 0 * :Developer", nick)]),
-        Message::new(Command::Cap, vec!["END"])
+        Message::new(Command::Cap, vec!["END"]),
     ]
 }
 

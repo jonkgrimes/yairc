@@ -1,16 +1,15 @@
 use io::Read;
-use std::io::{stdin, stdout, Write};
+use std::io::{stdin, Write};
 use std::net::TcpStream;
 use std::process;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::{error::Error, io};
 
-use termion::raw::IntoRawMode;
-use termion::{color, event, style};
+use termion::{color, style};
 
 mod client;
 mod message;
@@ -43,9 +42,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let reader_thread: JoinHandle<std::result::Result<(), Box<std::io::Error>>> =
         thread::spawn(move || {
             let mut stream = TcpStream::connect(server)?;
-            let mut buf = [0u8; 1024];
+            let mut buf = [0u8; 2048];
 
-            let mut messages: Vec<Message> = Vec::new();
+            let mut reply_messages: Vec<Message> = Vec::new();
             let mut need_to_register = true;
             let mut can_join = false;
 
@@ -54,37 +53,40 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match stream.read(&mut buf) {
                     Ok(length) => {
                         let data = String::from_utf8_lossy(&buf[0..length]);
-                        let message = Message::parse(&data);
-                        match message {
-                            Ok(message) => match message.command() {
-                                Command::Ping => {
-                                    let server = message.get_param(0).unwrap();
-                                    messages.push(Message::pong(server.clone()));
-                                    sender
-                                        .lock()
-                                        .unwrap()
-                                        .send(message)
-                                        .expect("Unable to send data");
+                        let messages: Vec<Result<Message, Box<dyn Error>>> = data.split("\r\n").map(|raw_message| Message::parse(raw_message)).collect();
+                        for message in messages {
+                            match message {
+                                Ok(message) => match message.command() {
+                                    Command::Ping => {
+                                        let server = message.get_param(0).unwrap();
+                                        reply_messages.push(Message::pong(server.clone()));
+                                        sender
+                                            .lock()
+                                            .unwrap()
+                                            .send(message)
+                                            .expect("Unable to send data to UI thread");
+                                    }
+                                    Command::RplWelcome => {
+                                        reply_messages.push(Message::motd());
+                                        reply_messages.append(&mut client::join(&channel_name));
+                                        sender
+                                            .lock()
+                                            .unwrap()
+                                            .send(message)
+                                            .expect("Unable to send data to UI thread");
+                                    }
+                                    _ => {
+                                        sender
+                                            .lock()
+                                            .unwrap()
+                                            .send(message)
+                                            .expect("Unable to send data to UI thread");
+                                    }
+                                },
+                                Err(e) => {
+                                    eprintln!("Unable to parse message: {}", data);
+                                    eprintln!("Error: {}", e);
                                 }
-                                Command::RplWelcome => {
-                                    messages.append(&mut client::join(&channel_name));
-                                    sender
-                                        .lock()
-                                        .unwrap()
-                                        .send(message)
-                                        .expect("Unable to send data");
-                                }
-                                _ => {
-                                    sender
-                                        .lock()
-                                        .unwrap()
-                                        .send(message)
-                                        .expect("Unable to send data");
-                                }
-                            },
-                            Err(e) => {
-                                eprintln!("Unable to parse message: {}", data);
-                                eprintln!("Error: {}", e);
                             }
                         }
                     }
@@ -93,16 +95,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 if need_to_register {
                     println!("Registering...");
-                    messages.append(&mut client::register(&nick));
+                    reply_messages.append(&mut client::register(&nick));
                     need_to_register = false;
                 }
 
                 if can_join {
                     println!("Joining...");
-                    messages.append(&mut client::join(&channel_name));
+                    reply_messages.append(&mut client::join(&channel_name));
                 }
 
-                messages
+                reply_messages
                     .iter()
                     .for_each(|message| match stream.write(&message.as_bytes()) {
                         Ok(0) => {
@@ -115,7 +117,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             eprintln!("Unable to send message: {}", e)
                         }
                     });
-                messages.clear();
+                reply_messages.clear();
 
                 thread::sleep(Duration::from_secs(1));
             }
@@ -138,13 +140,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                             color::Fg(color::Reset)
                         );
                     }
-                    Command::RplWelcome => {
+                    Command::RplWelcome | Command::RplMyInfo | Command::RplYourHost | Command::RplCreated => {
                         println!(
                             "{}{}{}{}{}",
                             style::Bold,
                             color::Fg(color::LightBlue),
                             message,
                             color::Fg(color::Reset),
+                            style::Reset
+                        );
+                    }
+                    Command::MessageOfTheDay | Command::RplMotd | Command::RplMotdStart | Command::RplEndOfMotd => {
+                        println!(
+                            "{}{}{}",
+                            style::Italic,
+                            message,
                             style::Reset
                         );
                     }

@@ -13,6 +13,13 @@ pub enum Command {
     Pong,
     Error,
     RplWelcome,
+    RplYourHost,
+    RplCreated,
+    RplMyInfo,
+    MessageOfTheDay,
+    RplMotd,
+    RplMotdStart,
+    RplEndOfMotd,
     Unknown(String),
 }
 
@@ -27,8 +34,18 @@ impl From<&str> for Command {
             "PING" => Command::Ping,
             "PRIVMSG" => Command::PrivMsg,
             "ERROR" => Command::Error,
+            "MOTD" => Command::MessageOfTheDay,
+            "RPL_MOTD" => Command::RplMotd,
+            "RPL_MOTDSTART" => Command::RplMotdStart,
+            "RPL_ENDOFMOTD" => Command::RplEndOfMotd,
             _ => match s {
                 "001" => Command::RplWelcome,
+                "002" => Command::RplYourHost,
+                "003" => Command::RplCreated,
+                "004" => Command::RplMyInfo,
+                "372" => Command::RplMotd,
+                "375" => Command::RplMotdStart,
+                "376" => Command::RplEndOfMotd,
                 _ => {
                     Command::Unknown(s.to_string())
                 }
@@ -65,7 +82,15 @@ impl Display for Command {
             Command::Pong => "PONG".to_string(),
             Command::Join => "JOIN".to_string(),
             Command::RplWelcome => "RPL_WELCOME".to_string(),
+            Command::MessageOfTheDay => "MOTD".to_string(),
             Command::Error => "ERROR".to_string(),
+            Command::RplMotd => "RPL_MOTD".to_string(),
+            Command::RplMotdStart => "RPL_MOTDSTART".to_string(),
+            Command::RplEndOfMotd => "RPL_ENDOFMOTD".to_string(),
+            Command::RplWelcome => "RPL_WELCOME".to_string(),
+            Command::RplYourHost => "RPL_YOURHOST".to_string(),
+            Command::RplCreated => "RPL_CREATED".to_string(),
+            Command::RplMyInfo => "RPL_MYINFO".to_string()
         };
         write!(f, "{}", command)
     }

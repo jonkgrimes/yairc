@@ -52,6 +52,15 @@ impl Message {
         }
     }
 
+    pub fn motd() -> Self {
+        Message {
+            tags: None,
+            source: None,
+            command: Command::MessageOfTheDay,
+            params: None
+        }
+    }
+
     /// Get a reference to the message's tags.
     pub fn tags(&self) -> Option<&Tags> {
         self.tags.as_ref()
