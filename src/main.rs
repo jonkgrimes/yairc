@@ -2,7 +2,7 @@ use io::Read;
 use std::io::{stdin, Write};
 use std::net::TcpStream;
 use std::process;
-use std::sync::mpsc::{channel};
+use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -53,7 +53,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match stream.read(&mut buf) {
                     Ok(length) => {
                         let data = String::from_utf8_lossy(&buf[0..length]);
-                        let messages: Vec<Result<Message, Box<dyn Error>>> = data.split("\r\n").map(|raw_message| Message::parse(raw_message)).collect();
+                        let messages: Vec<Result<Message, Box<dyn Error>>> = data
+                            .split_inclusive("\r\n")
+                            .map(|raw_message| Message::parse(raw_message))
+                            .collect();
                         for message in messages {
                             match message {
                                 Ok(message) => match message.command() {
@@ -125,7 +128,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initiailize output
     let ui_thread = thread::spawn(move || {
-
         loop {
             let receiver = receiver.lock().unwrap();
 
@@ -140,7 +142,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                             color::Fg(color::Reset)
                         );
                     }
-                    Command::RplWelcome | Command::RplMyInfo | Command::RplYourHost | Command::RplCreated => {
+                    Command::RplWelcome
+                    | Command::RplMyInfo
+                    | Command::RplYourHost
+                    | Command::RplCreated => {
                         println!(
                             "{}{}{}{}{}",
                             style::Bold,
@@ -150,13 +155,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                             style::Reset
                         );
                     }
-                    Command::MessageOfTheDay | Command::RplMotd | Command::RplMotdStart | Command::RplEndOfMotd => {
-                        println!(
-                            "{}{}{}",
-                            style::Italic,
-                            message,
-                            style::Reset
-                        );
+                    Command::MessageOfTheDay
+                    | Command::RplMotd
+                    | Command::RplMotdStart
+                    | Command::RplEndOfMotd => {
+                        println!("{}{}{}", style::Italic, message, style::Reset);
                     }
                     Command::PrivMsg => {
                         dbg!(&message);
@@ -185,7 +188,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     process::exit(1);
                 }
             }
-
         }
     });
 
