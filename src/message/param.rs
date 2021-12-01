@@ -41,11 +41,11 @@ pub struct Params {
 
 
 impl Params {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self { params: Vec::new() }
     }
 
-    fn add(&mut self, param: Param) {
+    pub fn add(&mut self, param: Param) {
         self.params.push(param)
     }
 
@@ -72,6 +72,14 @@ impl Display for Params {
 
 impl From<Vec<&str>> for Params {
     fn from(v: Vec<&str>) -> Self {
+        Self {
+            params: v.iter().map(|s| Param::new(s)).collect(),
+        }
+    }
+}
+
+impl From<Vec<String>> for Params {
+    fn from(v: Vec<String>) -> Self {
         Self {
             params: v.iter().map(|s| Param::new(s)).collect(),
         }

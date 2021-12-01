@@ -2,13 +2,14 @@ use io::Read;
 use std::io::{stdin, Write};
 use std::net::TcpStream;
 use std::process;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Sender, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::{error::Error, io};
 
+use termion::input::TermRead;
 use termion::{color, style};
 
 mod client;
@@ -37,6 +38,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let sender = Arc::new(Mutex::new(tx));
     let receiver = Arc::new(Mutex::new(rx));
 
+    let ui_channel: (Sender<Message>, Receiver<Message>) = channel();
+    let ui_sender = Arc::new(Mutex::new(ui_channel.0));
+    let ui_receiver = Arc::new(Mutex::new(ui_channel.1));
+
     let server = format!("{}:{}", server_arg, DEFAUL_PORT);
 
     let reader_thread: JoinHandle<std::result::Result<(), Box<std::io::Error>>> =
@@ -49,7 +54,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut can_join = false;
 
             loop {
-                println!("Reading from server");
+                match ui_receiver.lock().unwrap().try_recv() {
+                    Ok(message) => {
+                        dbg!("I received a message!!!");
+                        reply_messages.push(message)
+                    },
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                    }
+                }
+
                 match stream.read(&mut buf) {
                     Ok(length) => {
                         let data = String::from_utf8_lossy(&buf[0..length]);
@@ -191,22 +205,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    let input_thread = thread::spawn(|| {
+    let input_thread = thread::spawn(move || {
         let stdin = stdin();
-        let stdin = stdin.lock();
+        let mut stdin = stdin.lock();
 
-        let mut bytes = stdin.bytes();
         loop {
-            let b = bytes.next().unwrap().unwrap();
-            println!(
-                "{}{}<{}>{}:{} {}",
-                style::Bold,
-                color::Fg(color::White),
-                "User",
-                color::Fg(color::Reset),
-                style::Reset,
-                b
-            );
+            let mut message = stdin.read_line().unwrap();
+            match message {
+                Some(message) => {
+                    let message = Message::priv_msg("poopie".to_string(), message);
+                    dbg!(&message);
+                    ui_sender.lock().unwrap().send(message).expect("Sending message to the server failed")
+                },
+                _ => {}
+            }
         }
     });
 

@@ -61,6 +61,12 @@ impl Message {
         }
     }
 
+    pub fn priv_msg(nick: String, message: String) -> Self {
+        let source = Some(Source { nick, user: None, host: None });
+        let mut params = vec![message];
+        Message { tags: None, source , command: Command::PrivMsg, params: Some(params.into()) }
+    }
+
     /// Get a reference to the message's tags.
     pub fn tags(&self) -> Option<&Tags> {
         self.tags.as_ref()
