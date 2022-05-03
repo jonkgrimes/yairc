@@ -15,6 +15,7 @@ use termion::{color, style};
 mod client;
 mod message;
 
+use client::Client;
 use message::{Command, Message};
 
 const DEFAUL_PORT: &'static str = "6697";
@@ -33,10 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .nth(3)
         .expect("Need to provide a nick for the server. Example: somename");
 
-    let (tx, rx) = channel();
-
-    let sender = Arc::new(Mutex::new(tx));
-    let receiver = Arc::new(Mutex::new(rx));
+    let client = Client::new(&server_arg, &channel_name, &nick);
 
     let ui_channel: (Sender<Message>, Receiver<Message>) = channel();
     let ui_sender = Arc::new(Mutex::new(ui_channel.0));
@@ -64,50 +62,56 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
 
-                match stream.read(&mut buf) {
-                    Ok(length) => {
-                        let data = String::from_utf8_lossy(&buf[0..length]);
-                        let messages: Vec<Result<Message, Box<dyn Error>>> = data
-                            .split_inclusive("\r\n")
-                            .map(|raw_message| Message::parse(raw_message))
-                            .collect();
-                        for message in messages {
-                            match message {
-                                Ok(message) => match message.command() {
-                                    Command::Ping => {
-                                        let server = message.get_param(0).unwrap();
-                                        reply_messages.push(Message::pong(server.clone()));
-                                        sender
-                                            .lock()
-                                            .unwrap()
-                                            .send(message)
-                                            .expect("Unable to send data to UI thread");
+                if let Ok(_) = stream.peek(&mut buf) {
+                    match stream.read(&mut buf) {
+                        Ok(length) => {
+                            let data = String::from_utf8_lossy(&buf[0..length]);
+                            let messages: Vec<Result<Message, Box<dyn Error>>> = data
+                                .split_inclusive("\r\n")
+                                .map(|raw_message| Message::parse(raw_message))
+                                .collect();
+                            for message in messages {
+                                match message {
+                                    Ok(message) => match message.command() {
+                                        Command::Ping => {
+                                            let server = message.get_param(0).unwrap();
+                                            reply_messages.push(Message::pong(server.clone()));
+                                            client
+                                                .sender()
+                                                .lock()
+                                                .unwrap()
+                                                .send(message)
+                                                .expect("Unable to send data to UI thread");
+                                        }
+                                        Command::RplWelcome => {
+                                            reply_messages.push(Message::motd());
+                                            reply_messages.append(&mut client::join(&channel_name));
+                                            client
+                                                .sender()
+                                                .lock()
+                                                .unwrap()
+                                                .send(message)
+                                                .expect("Unable to send data to UI thread");
+                                        }
+                                        _ => {
+                                            client
+                                                .sender()
+                                                .lock()
+                                                .unwrap()
+                                                .send(message)
+                                                .expect("Unable to send data to UI thread");
+                                        }
+                                    },
+                                    Err(e) => {
+                                        eprintln!("Unable to parse message: {}", data);
+                                        eprintln!("Error: {}", e);
                                     }
-                                    Command::RplWelcome => {
-                                        reply_messages.push(Message::motd());
-                                        reply_messages.append(&mut client::join(&channel_name));
-                                        sender
-                                            .lock()
-                                            .unwrap()
-                                            .send(message)
-                                            .expect("Unable to send data to UI thread");
-                                    }
-                                    _ => {
-                                        sender
-                                            .lock()
-                                            .unwrap()
-                                            .send(message)
-                                            .expect("Unable to send data to UI thread");
-                                    }
-                                },
-                                Err(e) => {
-                                    eprintln!("Unable to parse message: {}", data);
-                                    eprintln!("Error: {}", e);
                                 }
                             }
                         }
+                        Err(e) => return Err(Box::new(e)),
                     }
-                    Err(e) => return Err(Box::new(e)),
+
                 }
 
                 if need_to_register {
@@ -143,7 +147,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initiailize output
     let ui_thread = thread::spawn(move || {
         loop {
-            let receiver = receiver.lock().unwrap();
+            let receiver = client.receiver().lock().unwrap();
 
             // Data from server TCP stream
             match receiver.recv() {

@@ -1,11 +1,28 @@
 use std::net::TcpStream;
+use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::{Arc, Mutex};
 use crate::message::{Message, Command};
 
-pub struct Client;
+pub struct Client {
+    sender: Arc<Mutex<Sender<Message>>>,
+    receiver: Arc<Mutex<Receiver<Message>>>,
+}
 
 impl Client {
-    pub fn join_channel(conn: &mut TcpStream, name: String) {
-        
+    pub fn new(server: &str, channel_name: &str,  nick: &str) -> Self {
+        let (rx, tx) = channel();
+        let sender = Arc::new(Mutex::new(rx));
+        let receiver = Arc::new(Mutex::new(tx));
+
+        Self { sender, receiver }
+    }
+
+    pub fn sender(&self) -> Arc<Mutex<Sender<Message>>> {
+        self.sender.clone()
+    }
+
+    pub fn receiver(&self) -> Arc<Mutex<Receiver<Message>>> {
+        self.receiver.clone()
     }
 }
 
