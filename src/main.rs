@@ -35,6 +35,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .expect("Need to provide a nick for the server. Example: somename");
 
     let client = Client::new(&server_arg, &channel_name, &nick);
+    let sender = client.sender();
+    let receiver = client.receiver();
 
     let ui_channel: (Sender<Message>, Receiver<Message>) = channel();
     let ui_sender = Arc::new(Mutex::new(ui_channel.0));
@@ -147,7 +149,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initiailize output
     let ui_thread = thread::spawn(move || {
         loop {
-            let receiver = client.receiver().lock().unwrap();
+            let receiver = receiver.lock().unwrap();
 
             // Data from server TCP stream
             match receiver.recv() {

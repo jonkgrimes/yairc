@@ -67,16 +67,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "irc_client"
-version = "0.1.0"
-dependencies = [
- "nom",
- "serde",
- "serde_yaml",
- "termion",
-]
-
-[[package]]
 name = "lexical-core"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -258,6 +248,16 @@ name = "wyz"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
+
+[[package]]
+name = "yairc"
+version = "0.1.0"
+dependencies = [
+ "nom",
+ "serde",
+ "serde_yaml",
+ "termion",
+]
 
 [[package]]
 name = "yaml-rust"
