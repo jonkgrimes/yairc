@@ -1,0 +1,20 @@
+version: "3"
+
+services:
+  irc:
+    platform: linux/amd64
+    build: .
+    volumes:
+      - ./config:/configpl
+    ports:
+      - "6697:6697"
+    networks:
+      irc_network:
+        ipv4_address: 192.168.33.10
+
+networks:
+  irc_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.33.0/24
