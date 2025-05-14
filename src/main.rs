@@ -2,7 +2,8 @@ use io::Read;
 use std::io::{stdin, Write};
 use std::net::TcpStream;
 use std::process;
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::ptr::replace;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -44,6 +45,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let server = format!("{}:{}", server_arg, DEFAUL_PORT);
 
+    // Reads messages from the server
     let reader_thread: JoinHandle<std::result::Result<(), Box<std::io::Error>>> =
         thread::spawn(move || {
             let mut stream = TcpStream::connect(server)?;
@@ -58,7 +60,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     Ok(message) => {
                         dbg!("I received a message!!!");
                         reply_messages.push(message)
-                    },
+                    }
                     Err(e) => {
                         eprintln!("Error: {}", e);
                     }
@@ -95,6 +97,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                                                 .send(message)
                                                 .expect("Unable to send data to UI thread");
                                         }
+                                        Command::PrivMsg => {
+                                            client
+                                                .sender()
+                                                .lock()
+                                                .unwrap()
+                                                .send(message)
+                                                .expect("Unable to send data to UI thread");
+                                        }
                                         _ => {
                                             client
                                                 .sender()
@@ -113,7 +123,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
                         Err(e) => return Err(Box::new(e)),
                     }
-
                 }
 
                 if need_to_register {
@@ -216,13 +225,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut stdin = stdin.lock();
 
         loop {
-            let mut message = stdin.read_line().unwrap();
+            let message = stdin.read_line().unwrap();
             match message {
                 Some(message) => {
                     let message = Message::priv_msg("poopie".to_string(), message);
-                    dbg!(&message);
-                    ui_sender.lock().unwrap().send(message).expect("Sending message to the server failed")
-                },
+                    ui_sender
+                        .lock()
+                        .unwrap()
+                        .send(message)
+                        .expect("Sending message to the server failed")
+                }
                 _ => {}
             }
         }
